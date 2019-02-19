@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-# Service LegendasDivx.com version 0.2.8
+# Service LegendasDivx.com version 0.2.9
 # Code based on Undertext (FRODO) service
 # Coded by HiGhLaNdR@OLDSCHOOL
 # Ported to Gotham by HiGhLaNdR@OLDSCHOOL
-# Help by VaRaTRoN
+# Help by VaRaTRoN and Pedrock
 # Bugs & Features to highlander@teknorage.com
 # http://www.teknorage.com
 # License: GPL v2
@@ -27,6 +27,8 @@ import cookielib
 import urllib2
 import uuid
 import socket
+
+kodi_major_version = int(xbmc.getInfoLabel('System.BuildVersion').split('.')[0])
 
 _addon = xbmcaddon.Addon()
 _author     = _addon.getAddonInfo('author')
@@ -442,22 +444,20 @@ def Download(id, filename):
         log(u"Saving subtitles to '%s'" % (local_tmp_file,))
         try:
             with open(local_tmp_file, "wb") as local_file_handle:
-
                 local_file_handle.write(content)
             local_file_handle.close()
-            xbmc.sleep(500)
         except: log(u"Failed to save subtitles to '%s'" % (local_tmp_file,))
         if packed:
-            xbmc.executebuiltin("XBMC.Extract(%s, %s)" % (local_tmp_file.encode("utf-8"), _newtemp))
-            xbmc.sleep(1000)
+            extract(local_tmp_file, _newtemp)
 
             ## IF EXTRACTION FAILS, WHICH HAPPENS SOMETIMES ... BUG?? ... WE WILL BROWSE THE RAR FILE FOR MANUAL EXTRACTION ##
             searchsubs = recursive_glob(_newtemp, SUB_EXTS)
             searchsubscount = len(searchsubs)
             if searchsubscount == 0:
                 dialog = xbmcgui.Dialog()
-                subs_file = dialog.browse(1, _language(32024).encode('utf8'), 'files', '.srt|.sub|.aas|.ssa|.smi|.txt', False, True, _newtemp+'/').decode('utf-8')
-                subtitles_list.append(subs_file)
+                subs_file = dialog.browse(1, _language(32024).encode('utf8'), 'files', '.srt|.sub|.aas|.ssa|.smi|.txt', False, True, _newtemp).decode('utf-8')
+                if (subs_file != _newtemp):
+                    subtitles_list.append(subs_file)
             ## ELSE WE WILL GO WITH THE NORMAL PROCEDURE ##
             else:
                 log(u"Unpacked files in '%s'" % (_newtemp,))
@@ -470,9 +470,11 @@ def Download(id, filename):
                     # sure we get the newly created subtitle file
                     if searchsubscount == 1:
                         # unpacked file is a newly created subtitle file
-                        log(u"Unpacked subtitles file '%s'" % (file.decode('utf-8'),))
-                        try: subs_file = pjoin(_newtemp, file.decode("utf-8"))
-                        except: subs_file = pjoin(_newtemp, file.decode("latin1"))
+                        log(u"Unpacked subtitles file '%s'" % (file,))
+                        try: subs_file = pjoin(_newtemp, file)
+                        except:
+                            try: subs_file = pjoin(_newtemp, file.decode('utf8'))
+                            except: subs_file = pjoin(_newtemp, file.decode('latin1'))
                         subtitles_list.append(subs_file)
                         break
                     else:
@@ -500,6 +502,29 @@ def Download(id, filename):
                             break
         else: subtitles_list.append(subs_file)
     return subtitles_list
+
+def extract(source_archive, destination_path, archive_file = ''):
+    if kodi_major_version < 18:
+        log(u"Extracting from %s to %s using XBMC.Extract" % (source_archive, destination_path))
+        xbmc.executebuiltin("XBMC.Extract(%s, %s)" % (source_archive.encode('utf-8'), destination_path))
+        xbmc.sleep(1000)
+        return
+
+    log(u"Extracting '%s' from %s to %s" % (archive_file, source_archive, destination_path))
+    encoded_path = urllib.quote_plus(source_archive)
+    (dirs, files) = xbmcvfs.listdir('archive://%s%s/' % (encoded_path, archive_file))
+    for file in files:
+        file = file.decode('utf-8')
+        src = 'archive://%s%s/%s' % (encoded_path, archive_file, file)
+        dest = pjoin(destination_path, file)
+        log(u"Extracting file from %s to %s" % (src, dest))
+        if not xbmcvfs.copy(src, dest):
+            log(u"Failed to extract %s to %s" % (src, dest))
+    for directory in dirs:
+        directory = directory.decode('utf-8')
+        archive_src = '%s/%s' % (archive_file, directory)
+        dest = pjoin(destination_path, directory)
+        extract(source_archive, dest, archive_src)
 
 def normalizeString(str):
     return unicodedata.normalize('NFKD', unicode(unicode(str, 'utf-8'))).encode('ascii', 'ignore')
